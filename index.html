@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure PDF Viewer</title>
     <!-- Paystack SDK -->
     <script src="https://js.paystack.co/v1/inline.js"></script>
@@ -146,12 +146,6 @@
             position: relative;
             background: #f8f9fa;
             overflow: auto;
-            -webkit-touch-callout: none;
-            -webkit-user-select: none;
-            -khtml-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
         }
 
         /* Canvas-based PDF rendering */
@@ -159,9 +153,6 @@
             width: 100%;
             height: auto;
             display: block;
-            pointer-events: none;
-            -webkit-touch-callout: none;
-            -webkit-user-select: none;
         }
 
         .pdf-controls {
@@ -181,7 +172,6 @@
             padding: 5px 15px;
             cursor: pointer;
             font-size: 14px;
-            -webkit-tap-highlight-color: transparent;
         }
 
         .pdf-controls button:hover {
@@ -302,7 +292,6 @@
             align-items: center;
             justify-content: center;
             gap: 10px;
-            -webkit-tap-highlight-color: transparent;
         }
 
         .pay-button:hover {
@@ -452,27 +441,14 @@
             background: #f44336;
         }
 
-        /* Mobile-specific protections */
-        @media (max-width: 768px) {
-            body {
-                padding: 10px;
-                -webkit-text-size-adjust: none;
-            }
-            
+        /* Responsive */
+        @media (max-width: 900px) {
             .main-layout {
                 grid-template-columns: 1fr;
             }
-            
-            .pdf-viewer {
-                height: 70vh;
-            }
-        }
 
-        /* iOS specific */
-        @supports (-webkit-touch-callout: none) {
-            .pdf-viewer {
-                -webkit-touch-callout: none;
-                -webkit-user-select: none;
+            body {
+                padding: 15px;
             }
         }
     </style>
@@ -557,9 +533,6 @@
         </div>
     </div>
 
-    <!-- Notification -->
-    <div class="notification" id="notification"></div>
-
     <script>
         // Configuration
         const PAYSTACK_PUBLIC_KEY = 'pk_test_5541021b5c191d8892c207ce33ebb05841b7110d';
@@ -575,8 +548,6 @@
         let totalPages = 0;
         let screenshotDetected = false;
         let recordingDetected = false;
-        let lastVolumePress = 0;
-        let lastOrientationChange = Date.now();
 
         // DOM elements
         const pdfCanvas = document.getElementById('pdfCanvas');
@@ -595,20 +566,21 @@
         const currentPageSpan = document.getElementById('currentPage');
         const totalPagesSpan = document.getElementById('totalPages');
 
-        // ========== MOBILE-SPECIFIC SCREENSHOT DETECTION ==========
+        // ========== ADVANCED SCREENSHOT DETECTION ==========
 
-        // Detect hardware button combinations (common for screenshots)
+        // Detect phone screenshot buttons
+        let lastVolumePress = 0;
         document.addEventListener('keydown', (e) => {
-            // Volume buttons on Android
+            // Detect volume buttons (common for screenshots on Android)
             if (e.key === 'VolumeDown' || e.key === 'VolumeUp') {
                 const now = Date.now();
-                if (now - lastVolumePress < 800) { // Volume pressed twice quickly = screenshot
+                if (now - lastVolumePress < 500) {
                     triggerScreenshotProtection();
                 }
                 lastVolumePress = now;
             }
 
-            // Power button + volume (common screenshot combo)
+            // Detect power button + volume (common screenshot combo)
             if (e.key === 'Power' || e.key === 'VolumeDown' || e.key === 'VolumeUp') {
                 setTimeout(() => {
                     if (document.hidden) {
@@ -618,337 +590,67 @@
             }
         });
 
-        // iOS/Android touch gesture detection for suspicious patterns
-        let touchStartTime = 0;
-        let touchPoints = 0;
-        
-        document.addEventListener('touchstart', (e) => {
-            touchStartTime = Date.now();
-            touchPoints = e.touches.length;
-            
-            // Detect 3-finger swipe (iOS screenshot gesture)
-            if (e.touches.length >= 3) {
-                triggerScreenshotProtection();
-            }
-        });
-
-        document.addEventListener('touchend', (e) => {
-            const touchDuration = Date.now() - touchStartTime;
-            
-            // Suspicious: quick touch with multiple fingers (possible screenshot)
-            if (touchDuration < 200 && touchPoints >= 2) {
-                triggerScreenshotProtection();
-            }
-        });
-
-        // Detect assistive touch (possible screen recording)
-        let lastUserInteraction = Date.now();
-        document.addEventListener('touchmove', () => {
-            const now = Date.now();
-            if (now - lastUserInteraction < 50) {
-                // Suspicious rapid movements (possible automation/recording)
-                triggerRecordingProtection();
-            }
-            lastUserInteraction = now;
-        });
-
-        // Detect screen orientation changes (often happens during screenshot)
-        window.addEventListener('orientationchange', () => {
-            const now = Date.now();
-            if (now - lastOrientationChange < 500) {
-                triggerScreenshotProtection();
-            }
-            lastOrientationChange = now;
-        });
-
-        // Monitor for screen recording indicators
-        let lastBrightnessChange = 0;
-        window.addEventListener('resize', () => {
-            // On mobile, resize can indicate recording started
-            if (window.innerWidth < window.screen.width * 0.8) {
-                triggerRecordingProtection();
-            }
-        });
-
-        // Block common screenshot shortcuts on mobile keyboards
-        document.addEventListener('keydown', (e) => {
-            // Block Cmd+Shift+3/4 (iOS simulator screenshots)
-            if (e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4')) {
-                e.preventDefault();
-                triggerScreenshotProtection();
-            }
-            
-            // Block home button simulation (Android screenshot)
-            if (e.key === 'Home' || e.key === 'End') {
-                triggerScreenshotProtection();
-            }
-        });
-
-        // Detect when app goes to background (possible screenshot/recording)
-        let backgroundTime = 0;
+        // Detect screen recording
+        let visibilityChanges = 0;
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
-                backgroundTime = Date.now();
-                // Immediately block content
+                visibilityChanges++;
+                if (visibilityChanges > 3) {
+                    triggerRecordingProtection();
+                }
+            }
+        });
+
+        // Detect if app is in background (possible recording)
+        window.addEventListener('blur', () => {
+            setTimeout(() => {
+                if (!document.hasFocus()) {
+                    triggerRecordingProtection();
+                }
+            }, 100);
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
                 blockPDFContent();
-                
-                // Check if coming back from background quickly (suspicious)
-                setTimeout(() => {
-                    if (!document.hidden && Date.now() - backgroundTime < 1000) {
-                        triggerScreenshotProtection();
-                    }
-                }, 1100);
             }
         });
 
         window.addEventListener('blur', () => {
             blockPDFContent();
-            
-            // On mobile, blur often means notification shade pulled down (possible screenshot)
-            setTimeout(() => {
-                if (!document.hasFocus()) {
-                    triggerRecordingProtection();
-                }
-            }, 500);
         });
-
-        window.addEventListener('focus', () => {
-            setTimeout(() => {
-                if (currentUser && pdfDoc && !screenshotDetected && !recordingDetected) {
-                    // Check if we need to restore content
-                    if (screenshotBlock.style.display === 'block') {
-                        screenshotBlock.style.display = 'none';
-                    }
-                    if (recordingBlock.style.display === 'block') {
-                        recordingBlock.style.display = 'none';
-                    }
-                    unlockPDF();
-                }
-            }, 500);
-        });
-
-        // Detect screen recording through performance metrics
-        let lastFrameTime = performance.now();
-        let frameCount = 0;
-        
-        function checkRecording() {
-            if (!currentUser) return;
-            
-            const now = performance.now();
-            const delta = now - lastFrameTime;
-            
-            // If frames are too consistent, might be recording
-            if (frameCount > 10) {
-                const averageFrameTime = delta / frameCount;
-                if (averageFrameTime > 16.67 && averageFrameTime < 17.5) {
-                    // Suspicious: exactly 60fps recording
-                    triggerRecordingProtection();
-                }
-                frameCount = 0;
-                lastFrameTime = now;
-            }
-            
-            frameCount++;
-            requestAnimationFrame(checkRecording);
-        }
-
-        // Start monitoring if user has access
-        function startRecordingDetection() {
-            lastFrameTime = performance.now();
-            frameCount = 0;
-            requestAnimationFrame(checkRecording);
-        }
-
-        // ========== MOBILE WATERMARKING ==========
-
-        function addMobileWatermarks() {
-            if (!currentUser) return;
-            
-            // Remove old watermarks
-            document.querySelectorAll('.mobile-watermark').forEach(el => el.remove());
-            
-            // Add watermarks that are visible on mobile screenshots
-            const watermarkCount = window.innerWidth < 768 ? 10 : 15;
-            
-            for (let i = 0; i < watermarkCount; i++) {
-                const watermark = document.createElement('div');
-                watermark.className = 'mobile-watermark';
-                
-                // Random position
-                const left = Math.random() * 100;
-                const top = Math.random() * 100;
-                
-                // Create semi-transparent text
-                const watermarkText = `${currentUser.email.substring(0, 3)}*** | ${Date.now().toString().substring(7)}`;
-                
-                watermark.style.cssText = `
-                    position: fixed;
-                    left: ${left}%;
-                    top: ${top}%;
-                    transform: translate(-50%, -50%) rotate(${Math.random() * 360}deg);
-                    color: rgba(0, 0, 0, 0.1);
-                    font-size: ${12 + Math.random() * 6}px;
-                    font-weight: bold;
-                    pointer-events: none;
-                    z-index: 999998;
-                    white-space: nowrap;
-                    text-shadow: 0 0 1px rgba(255,255,255,0.3);
-                    font-family: monospace;
-                `;
-                
-                watermark.textContent = watermarkText;
-                document.body.appendChild(watermark);
-            }
-            
-            // Add screen-edge watermarks (hard to crop out)
-            const edges = ['top', 'bottom', 'left', 'right'];
-            edges.forEach(edge => {
-                const edgeWatermark = document.createElement('div');
-                edgeWatermark.className = 'mobile-watermark';
-                edgeWatermark.style.cssText = `
-                    position: fixed;
-                    ${edge}: 5px;
-                    ${edge === 'top' || edge === 'bottom' ? 'left: 50%; transform: translateX(-50%);' : 'top: 50%; transform: translateY(-50%);'}
-                    color: rgba(0, 0, 0, 0.08);
-                    font-size: 10px;
-                    pointer-events: none;
-                    z-index: 999998;
-                    white-space: nowrap;
-                `;
-                edgeWatermark.textContent = `${currentUser.email} • ${new Date().toLocaleTimeString()}`;
-                document.body.appendChild(edgeWatermark);
-            });
-        }
-
-        // ========== ENHANCED SCREENSHOT TRIGGER ==========
 
         function triggerScreenshotProtection() {
-            if (screenshotDetected || !currentUser) return;
+            if (screenshotDetected) return;
             screenshotDetected = true;
 
-            console.log('⚠️ Screenshot attempt detected');
-
-            // Make screenshot block visible with mobile-friendly pattern
-            screenshotBlock.style.display = 'block';
-            screenshotBlock.style.background = 'repeating-linear-gradient(45deg, #000 0px, #000 30px, #ff0000 30px, #ff0000 60px)';
-            screenshotBlock.style.opacity = '1';
-
-            // Clear canvas completely
-            ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
-            
-            // Fill with black to ensure screenshot is black
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, pdfCanvas.width, pdfCanvas.height);
-
-            // Hide PDF controls
-            pdfControls.style.display = 'none';
-
-            // Show warning
-            showNotification('⚠️ Screenshot detected! Access temporarily blocked.', 'error');
-
-            // Log with device info
-            const deviceInfo = getMobileDeviceInfo();
-            console.error('SCREENSHOT ATTEMPT:', {
-                user: currentUser?.email,
-                time: new Date().toISOString(),
-                page: currentPage,
-                device: deviceInfo
-            });
-
-            // Store in localStorage as evidence
-            const violations = JSON.parse(localStorage.getItem('pdf_violations') || '[]');
-            violations.push({
-                type: 'screenshot',
-                user: currentUser?.email,
-                time: Date.now(),
-                page: currentPage,
-                device: deviceInfo
-            });
-            localStorage.setItem('pdf_violations', JSON.stringify(violations.slice(-10)));
-
-            // Blur everything
-            document.body.style.filter = 'blur(15px)';
-            document.body.style.transition = 'filter 0.3s';
-
-            // Disable interaction
-            document.body.style.pointerEvents = 'none';
-
-            // Reset after longer timeout on mobile
-            setTimeout(() => {
-                screenshotBlock.style.display = 'none';
-                document.body.style.filter = 'none';
-                document.body.style.pointerEvents = 'auto';
-                screenshotDetected = false;
-                if (currentUser && pdfDoc) {
-                    pdfControls.style.display = 'flex';
-                    renderPage(currentPage);
-                }
-            }, 15000); // 15 seconds penalty
-        }
-
-        function triggerRecordingProtection() {
-            if (recordingDetected || !currentUser) return;
-            recordingDetected = true;
-
-            console.log('⚠️ Recording attempt detected');
-
-            // Make recording block visible
-            recordingBlock.style.display = 'block';
-            recordingBlock.style.background = '#000000';
-            recordingBlock.style.opacity = '1';
+            // Make screenshot block visible (this will appear in screenshots)
+            screenshotBlock.style.background = 'linear-gradient(45deg, #000000 25%, #ff0000 25%, #ff0000 50%, #000000 50%, #000000 75%, #ff0000 75%)';
+            screenshotBlock.style.backgroundSize = '40px 40px';
+            screenshotBlock.style.opacity = '0.9';
 
             // Clear canvas
             ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, pdfCanvas.width, pdfCanvas.height);
-
-            // Hide PDF controls
-            pdfControls.style.display = 'none';
 
             // Show warning
-            showNotification('⚠️ Screen recording detected! Content blocked.', 'error');
+            showNotification('⚠️ Screenshot detected! Content protected.', 'error');
 
             // Log violation
-            const deviceInfo = getMobileDeviceInfo();
-            console.error('RECORDING ATTEMPT:', {
-                user: currentUser?.email,
-                time: new Date().toISOString(),
-                page: currentPage,
-                device: deviceInfo
-            });
+            console.warn('Screenshot attempt detected');
 
-            // Store violation
-            const violations = JSON.parse(localStorage.getItem('pdf_violations') || '[]');
-            violations.push({
-                type: 'recording',
-                user: currentUser?.email,
-                time: Date.now(),
-                page: currentPage,
-                device: deviceInfo
-            });
-            localStorage.setItem('pdf_violations', JSON.stringify(violations.slice(-10)));
-
-            // Blur and disable
-            document.body.style.filter = 'blur(20px)';
-            document.body.style.pointerEvents = 'none';
-
-            // Reset after longer timeout
+            // Reset after 5 seconds
             setTimeout(() => {
-                recordingBlock.style.display = 'none';
-                document.body.style.filter = 'none';
-                document.body.style.pointerEvents = 'auto';
-                recordingDetected = false;
+                screenshotBlock.style.background = 'transparent';
+                screenshotBlock.style.opacity = '1';
+                screenshotDetected = false;
                 if (currentUser && pdfDoc) {
-                    pdfControls.style.display = 'flex';
                     renderPage(currentPage);
                 }
-            }, 20000); // 20 seconds penalty
+            }, 5000);
         }
 
         function blockPDFContent() {
-            if (!currentUser) return;
-            
-            // Show blocks
+            // Show the black overlay
             screenshotBlock.style.display = 'block';
             recordingBlock.style.display = 'block';
 
@@ -958,28 +660,34 @@
 
             // Hide PDF controls
             pdfControls.style.display = 'none';
-            
-            // Show overlay
             pdfOverlay.style.display = 'flex';
-            pdfOverlay.querySelector('h2').textContent = 'Content Hidden';
+            pdfOverlay.querySelector('h2').textContent = 'Access blocked';
         }
 
-        // Get mobile device info
-        function getMobileDeviceInfo() {
-            const ua = navigator.userAgent;
-            let device = 'Unknown';
-            
-            if (/android/i.test(ua)) {
-                device = 'Android';
-            } else if (/iPad|iPhone|iPod/.test(ua)) {
-                device = 'iOS';
-            }
-            
-            return {
-                platform: device,
-                screen: `${window.screen.width}x${window.screen.height}`,
-                touch: 'ontouchstart' in window
-            };
+        function triggerRecordingProtection() {
+            if (recordingDetected) return;
+            recordingDetected = true;
+
+            // Make recording block visible
+            recordingBlock.style.display = 'block';
+            recordingBlock.style.background = '#000000';
+            recordingBlock.style.opacity = '0.95';
+
+            // Clear canvas
+            ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+
+            // Show warning
+            showNotification('⚠️ Screen recording detected! Content protected.', 'error');
+
+            // Reset after 5 seconds
+            setTimeout(() => {
+                recordingBlock.style.display = 'none';
+                recordingBlock.style.background = 'transparent';
+                recordingDetected = false;
+                if (currentUser && pdfDoc) {
+                    renderPage(currentPage);
+                }
+            }, 5000);
         }
 
         // ========== PDF RENDERING WITH CANVAS ==========
@@ -1015,27 +723,14 @@
 
                 await page.render(renderContext).promise;
 
-                // Add anti-screenshot overlay (visible in screenshots but not to eye)
-                ctx.save();
-                ctx.globalCompositeOperation = 'difference';
-                
-                // Create a pattern that's hard to capture cleanly
-                for (let i = 0; i < 100; i++) {
-                    ctx.fillStyle = `rgba(255, 255, 255, 0.001)`;
-                    ctx.fillRect(
-                        Math.random() * pdfCanvas.width,
-                        Math.random() * pdfCanvas.height,
-                        2, 2
-                    );
-                }
-                ctx.restore();
+                // Add anti-screenshot overlay
+                ctx.globalCompositeOperation = 'screen';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.01)';
+                ctx.fillRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+                ctx.globalCompositeOperation = 'source-over';
 
                 currentPage = pageNum;
                 currentPageSpan.textContent = pageNum;
-                
-                // Add watermarks after rendering
-                addMobileWatermarks();
-                
             } catch (error) {
                 console.error('Error rendering page:', error);
             }
@@ -1104,25 +799,11 @@
             pdfOverlay.style.display = 'flex';
             pdfControls.style.display = 'none';
             ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
-            
-            // Remove watermarks
-            document.querySelectorAll('.mobile-watermark').forEach(el => el.remove());
         }
 
         function unlockPDF() {
             pdfOverlay.style.display = 'none';
             loadPDF();
-            addMobileWatermarks();
-            
-            // Start recording detection
-            startRecordingDetection();
-            
-            // Update watermarks every 3 seconds
-            setInterval(() => {
-                if (currentUser && !screenshotDetected && !recordingDetected) {
-                    addMobileWatermarks();
-                }
-            }, 3000);
         }
 
         function showStatus(message, type) {
@@ -1260,7 +941,6 @@
             unlockPDF();
             updateTimer(user.accessExpiry);
             updateUserWatermark();
-            addMobileWatermarks();
 
             payButton.disabled = true;
             payButton.innerHTML = '<i class="fas fa-check"></i> Access Granted';
@@ -1278,8 +958,6 @@
                 unlockPDF();
                 updateTimer(validUser.accessExpiry);
                 updateUserWatermark();
-                addMobileWatermarks();
-                startRecordingDetection();
                 payButton.disabled = true;
                 payButton.innerHTML = '<i class="fas fa-check"></i> Access Granted';
                 showStatus(`Welcome back ${validUser.name}!`, 'granted');
