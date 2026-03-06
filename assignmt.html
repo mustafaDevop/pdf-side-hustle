@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure PDF Viewer</title>
+    <!-- Paystack SDK -->
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+    <!-- PDF.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        }
+
+        body {
+            background-color: #ffffff;
+            min-height: 100vh;
+            padding: 30px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Screenshot Protection Overlay */
+        .screenshot-block {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            pointer-events: none;
+            z-index: 999999;
+            mix-blend-mode: screen;
+        }
+
+        /* Screen Recording Detection */
+        .recording-block {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            pointer-events: none;
+            z-index: 999998;
+            display: none;
+        }
+
+        /* User Watermark */
+        .user-watermark {
+            position: fixed;
+            bottom: 5px;
+            right: 5px;
+            opacity: 0.15;
+            font-size: 10px;
+            color: #000;
+            z-index: 999997;
+            pointer-events: none;
+            transform: rotate(-45deg);
+            white-space: nowrap;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #eaeaea;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .logo i {
+            color: #e74c3c;
+            margin-right: 10px;
+        }
+
+        .access-timer {
+            background: #f8f9fa;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #555;
+            border: 1px solid #eaeaea;
+        }
+
+        .timer-warning {
+            color: #e74c3c;
+            margin-left: 5px;
+            font-weight: 500;
+        }
+
+        /* Main layout */
+        .main-layout {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 30px;
+        }
+
+        /* PDF Section */
+        .pdf-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #eaeaea;
+        }
+
+        .pdf-header {
+            padding: 15px 20px;
+            background: #fff;
+            border-bottom: 1px solid #eaeaea;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pdf-header i {
+            font-size: 24px;
+            color: #e74c3c;
+        }
+
+        .pdf-header h3 {
+            font-size: 16px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .pdf-viewer {
+            height: 600px;
+            position: relative;
+            background: #f8f9fa;
+            overflow: auto;
+        }
+
+        /* Canvas-based PDF rendering */
+        #pdfCanvas {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .pdf-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            gap: 20px;
+            background: #fff;
+            border-bottom: 1px solid #eaeaea;
+        }
+
+        .pdf-controls button {
+            background: none;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px 15px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .pdf-controls button:hover {
+            background: #f5f5f5;
+        }
+
+        .pdf-controls span {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .pdf-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            backdrop-filter: blur(5px);
+            z-index: 10;
+        }
+
+        .pdf-overlay i {
+            font-size: 48px;
+            color: #e74c3c;
+        }
+
+        .pdf-overlay h2 {
+            font-size: 24px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .pdf-overlay p {
+            color: #666;
+        }
+
+        /* Payment Card */
+        .payment-card {
+            background: #fff;
+            border: 1px solid #eaeaea;
+            border-radius: 12px;
+            padding: 25px;
+            position: sticky;
+            top: 30px;
+        }
+
+        .payment-card h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .price {
+            font-size: 36px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .price small {
+            font-size: 14px;
+            font-weight: 400;
+            color: #999;
+        }
+
+        .duration {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eaeaea;
+        }
+
+        .feature-list {
+            list-style: none;
+            margin-bottom: 25px;
+        }
+
+        .feature-list li {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 0;
+            color: #555;
+            font-size: 14px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+
+        .feature-list i {
+            color: #2ecc71;
+            font-size: 14px;
+            width: 20px;
+        }
+
+        .pay-button {
+            width: 100%;
+            padding: 15px;
+            background: #e74c3c;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .pay-button:hover {
+            background: #c0392b;
+        }
+
+        .pay-button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        .access-status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-granted {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-denied {
+            background: #f8f9fa;
+            color: #666;
+            border: 1px solid #eaeaea;
+        }
+
+        /* Users Section */
+        .users-section {
+            margin-top: 40px;
+            border-top: 1px solid #eaeaea;
+            padding-top: 30px;
+        }
+
+        .users-section h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .users-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .user-card {
+            background: #fff;
+            border: 1px solid #eaeaea;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .user-info {
+            flex: 1;
+        }
+
+        .user-name {
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .user-email {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .user-badge {
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+
+        .badge-active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge-expired {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            z-index: 10000;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.info { background: #2196F3; }
+        .notification.success { background: #4CAF50; }
+        .notification.warning { background: #ff9800; }
+        .notification.error { background: #f44336; }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+            
+            body {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Protection Layers -->
+    <div class="screenshot-block" id="screenshotBlock"></div>
+    <div class="recording-block" id="recordingBlock"></div>
+    <div class="user-watermark" id="userWatermark"></div>
+    
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <i class="fas fa-file-pdf"></i>
+                SecurePDF
+            </div>
+            <div class="access-timer" id="timerDisplay">
+                <i class="far fa-clock"></i>
+                <span id="timeRemaining">Not purchased</span>
+                <span class="timer-warning" id="timerWarning"></span>
+            </div>
+        </div>
+
+        <!-- Main Layout -->
+        <div class="main-layout">
+            <!-- PDF Section with Canvas Rendering -->
+            <div class="pdf-section">
+                <div class="pdf-header">
+                    <i class="fas fa-file-pdf"></i>
+                    <h3>CYBERSECURITY PRACTICAL LABORATORY REPORT.pdf</h3>
+                </div>
+                <div class="pdf-controls" id="pdfControls" style="display: none;">
+                    <button onclick="previousPage()"><i class="fas fa-chevron-left"></i> Prev</button>
+                    <span id="pageInfo">Page <span id="currentPage">1</span> of <span id="totalPages">0</span></span>
+                    <button onclick="nextPage()">Next <i class="fas fa-chevron-right"></i></button>
+                </div>
+                <div class="pdf-viewer" id="pdfViewer">
+                    <canvas id="pdfCanvas"></canvas>
+                    <div class="pdf-overlay" id="pdfOverlay">
+                        <i class="fas fa-lock"></i>
+                        <h2>Document Locked</h2>
+                        <p>Purchase access to view this PDF</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Card -->
+            <div class="payment-card">
+                <h3>Premium Access</h3>
+                <div class="price">
+                    ₦1,000 <small>one-time</small>
+                </div>
+                <div class="duration">
+                    <i class="far fa-clock"></i> 3 hours access
+                </div>
+                
+                <ul class="feature-list">
+                    <li><i class="fas fa-check-circle"></i> Full PDF access for 3 hours</li>
+                    <li><i class="fas fa-check-circle"></i> Secure canvas rendering</li>
+                    <li><i class="fas fa-check-circle"></i> No download/print options</li>
+                    <li><i class="fas fa-check-circle"></i> Screenshot protection</li>
+                </ul>
+
+                <button class="pay-button" id="payButton">
+                    <i class="fas fa-lock-open"></i>
+                    Purchase Access
+                </button>
+
+                <div class="access-status status-denied" id="accessStatus" style="display: none;">
+                    <i class="fas fa-info-circle"></i>
+                    <span id="statusMessage"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Users Section -->
+        <div class="users-section">
+            <h3><i class="fas fa-users"></i> Active Users</h3>
+            <div class="users-grid" id="usersList"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const PAYSTACK_PUBLIC_KEY = 'pk_test_5541021b5c191d8892c207ce33ebb05841b7110d';
+        const PDF_FILE = 'CYBERSECURITY PRACTICAL LABORATORY REPORT.pdf';
+        const ACCESS_DURATION = 3 * 60 * 60 * 1000;
+        
+        // State
+        let currentUser = null;
+        let accessTimer = null;
+        let users = [];
+        let pdfDoc = null;
+        let currentPage = 1;
+        let totalPages = 0;
+        let screenshotDetected = false;
+        let recordingDetected = false;
+
+        // DOM elements
+        const pdfCanvas = document.getElementById('pdfCanvas');
+        const ctx = pdfCanvas.getContext('2d');
+        const pdfOverlay = document.getElementById('pdfOverlay');
+        const pdfControls = document.getElementById('pdfControls');
+        const timerDisplay = document.getElementById('timeRemaining');
+        const timerWarning = document.getElementById('timerWarning');
+        const accessStatus = document.getElementById('accessStatus');
+        const statusMessage = document.getElementById('statusMessage');
+        const payButton = document.getElementById('payButton');
+        const userWatermark = document.getElementById('userWatermark');
+        const screenshotBlock = document.getElementById('screenshotBlock');
+        const recordingBlock = document.getElementById('recordingBlock');
+        const notification = document.getElementById('notification');
+        const currentPageSpan = document.getElementById('currentPage');
+        const totalPagesSpan = document.getElementById('totalPages');
+
+        // ========== ADVANCED SCREENSHOT DETECTION ==========
+        
+        // Detect phone screenshot buttons
+        let lastVolumePress = 0;
+        document.addEventListener('keydown', (e) => {
+            // Detect volume buttons (common for screenshots on Android)
+            if (e.key === 'VolumeDown' || e.key === 'VolumeUp') {
+                const now = Date.now();
+                if (now - lastVolumePress < 500) {
+                    triggerScreenshotProtection();
+                }
+                lastVolumePress = now;
+            }
+
+            // Detect power button + volume (common screenshot combo)
+            if (e.key === 'Power' || e.key === 'VolumeDown' || e.key === 'VolumeUp') {
+                setTimeout(() => {
+                    if (document.hidden) {
+                        triggerScreenshotProtection();
+                    }
+                }, 100);
+            }
+        });
+
+        // Detect screen recording
+        let visibilityChanges = 0;
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                visibilityChanges++;
+                if (visibilityChanges > 3) {
+                    triggerRecordingProtection();
+                }
+            }
+        });
+
+        // Detect if app is in background (possible recording)
+        window.addEventListener('blur', () => {
+            setTimeout(() => {
+                if (!document.hasFocus()) {
+                    triggerRecordingProtection();
+                }
+            }, 100);
+        });
+
+        function triggerScreenshotProtection() {
+            if (screenshotDetected) return;
+            screenshotDetected = true;
+
+            // Make screenshot block visible (this will appear in screenshots)
+            screenshotBlock.style.background = 'linear-gradient(45deg, #000000 25%, #ff0000 25%, #ff0000 50%, #000000 50%, #000000 75%, #ff0000 75%)';
+            screenshotBlock.style.backgroundSize = '40px 40px';
+            screenshotBlock.style.opacity = '0.9';
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+            
+            // Show warning
+            showNotification('⚠️ Screenshot detected! Content protected.', 'error');
+            
+            // Log violation
+            console.warn('Screenshot attempt detected');
+            
+            // Reset after 5 seconds
+            setTimeout(() => {
+                screenshotBlock.style.background = 'transparent';
+                screenshotBlock.style.opacity = '1';
+                screenshotDetected = false;
+                if (currentUser && pdfDoc) {
+                    renderPage(currentPage);
+                }
+            }, 5000);
+        }
+
+        function triggerRecordingProtection() {
+            if (recordingDetected) return;
+            recordingDetected = true;
+
+            // Make recording block visible
+            recordingBlock.style.display = 'block';
+            recordingBlock.style.background = '#000000';
+            recordingBlock.style.opacity = '0.95';
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+            
+            // Show warning
+            showNotification('⚠️ Screen recording detected! Content protected.', 'error');
+            
+            // Reset after 5 seconds
+            setTimeout(() => {
+                recordingBlock.style.display = 'none';
+                recordingBlock.style.background = 'transparent';
+                recordingDetected = false;
+                if (currentUser && pdfDoc) {
+                    renderPage(currentPage);
+                }
+            }, 5000);
+        }
+
+        // ========== PDF RENDERING WITH CANVAS ==========
+        
+        async function loadPDF() {
+            try {
+                const loadingTask = pdfjsLib.getDocument(PDF_FILE);
+                pdfDoc = await loadingTask.promise;
+                totalPages = pdfDoc.numPages;
+                totalPagesSpan.textContent = totalPages;
+                pdfControls.style.display = 'flex';
+                renderPage(1);
+            } catch (error) {
+                console.error('Error loading PDF:', error);
+                showNotification('Error loading PDF', 'error');
+            }
+        }
+
+        async function renderPage(pageNum) {
+            try {
+                const page = await pdfDoc.getPage(pageNum);
+                
+                // Set canvas dimensions based on viewport
+                const viewport = page.getViewport({ scale: 1.5 });
+                pdfCanvas.width = viewport.width;
+                pdfCanvas.height = viewport.height;
+                
+                // Render PDF page to canvas
+                const renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport
+                };
+                
+                await page.render(renderContext).promise;
+                
+                // Add anti-screenshot overlay
+                ctx.globalCompositeOperation = 'screen';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.01)';
+                ctx.fillRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+                ctx.globalCompositeOperation = 'source-over';
+                
+                currentPage = pageNum;
+                currentPageSpan.textContent = pageNum;
+            } catch (error) {
+                console.error('Error rendering page:', error);
+            }
+        }
+
+        function nextPage() {
+            if (currentPage < totalPages) {
+                renderPage(currentPage + 1);
+            }
+        }
+
+        function previousPage() {
+            if (currentPage > 1) {
+                renderPage(currentPage - 1);
+            }
+        }
+
+        // ========== USER MANAGEMENT ==========
+        function loadUsers() {
+            const stored = localStorage.getItem('pdf_users_secure');
+            if (stored) {
+                users = JSON.parse(stored);
+            } else {
+                users = [];
+            }
+            renderUsers();
+        }
+
+        function saveUsers() {
+            localStorage.setItem('pdf_users_secure', JSON.stringify(users));
+        }
+
+        function renderUsers() {
+            const container = document.getElementById('usersList');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            if (users.length === 0) {
+                container.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">No users yet</p>';
+                return;
+            }
+            
+            users.forEach(user => {
+                const hasActiveAccess = user.hasAccess && user.accessExpiry > Date.now();
+                const initials = user.name.split(' ').map(n => n[0]).join('').toUpperCase();
+                
+                const card = document.createElement('div');
+                card.className = 'user-card';
+                card.innerHTML = `
+                    <div class="user-avatar">${initials}</div>
+                    <div class="user-info">
+                        <div class="user-name">${user.name}</div>
+                        <div class="user-email">${user.email}</div>
+                    </div>
+                    <span class="user-badge ${hasActiveAccess ? 'badge-active' : 'badge-expired'}">
+                        ${hasActiveAccess ? 'Active' : 'Expired'}
+                    </span>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // ========== PDF ACCESS MANAGEMENT ==========
+        function lockPDF() {
+            pdfOverlay.style.display = 'flex';
+            pdfControls.style.display = 'none';
+            ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+        }
+
+        function unlockPDF() {
+            pdfOverlay.style.display = 'none';
+            loadPDF();
+        }
+
+        function showStatus(message, type) {
+            accessStatus.style.display = 'flex';
+            accessStatus.className = `access-status status-${type}`;
+            statusMessage.textContent = message;
+        }
+
+        function updateTimer(expiryTime) {
+            if (accessTimer) clearInterval(accessTimer);
+            
+            const update = () => {
+                const now = Date.now();
+                const timeLeft = expiryTime - now;
+                
+                if (timeLeft <= 0) {
+                    timerDisplay.textContent = 'Access expired';
+                    timerWarning.textContent = '⚠️';
+                    lockPDF();
+                    clearInterval(accessTimer);
+                    
+                    if (currentUser) {
+                        currentUser.hasAccess = false;
+                        saveUsers();
+                        renderUsers();
+                    }
+                    
+                    payButton.disabled = false;
+                    payButton.innerHTML = '<i class="fas fa-lock-open"></i> Purchase Access';
+                    currentUser = null;
+                    updateUserWatermark();
+                    return;
+                }
+                
+                const hours = Math.floor(timeLeft / (60 * 60 * 1000));
+                const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+                
+                timerDisplay.textContent = `${hours}h ${minutes}m remaining`;
+                timerWarning.textContent = timeLeft < 30 * 60 * 1000 ? '⚠️ Expiring soon' : '';
+            };
+            
+            update();
+            accessTimer = setInterval(update, 60000);
+        }
+
+        function updateUserWatermark() {
+            if (currentUser) {
+                userWatermark.textContent = `${currentUser.email} • ${currentUser.name} • ${new Date().toLocaleString()}`;
+            } else {
+                userWatermark.textContent = `Guest • ${new Date().toLocaleString()}`;
+            }
+        }
+
+        // ========== NOTIFICATION ==========
+        function showNotification(message, type = 'info') {
+            notification.textContent = message;
+            notification.className = `notification ${type}`;
+            notification.style.display = 'block';
+            
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 3000);
+        }
+
+        // ========== PAYMENT ==========
+        function initializePayment() {
+            const email = prompt('Enter your email:', '');
+            if (!email || !email.includes('@')) {
+                alert('Please enter a valid email');
+                return;
+            }
+
+            const name = prompt('Enter your full name:', '');
+            if (!name) {
+                alert('Please enter your name');
+                return;
+            }
+
+            const existingUser = users.find(u => u.email === email && u.hasAccess && u.accessExpiry > Date.now());
+            if (existingUser) {
+                alert('You already have active access!');
+                return;
+            }
+
+            const handler = PaystackPop.setup({
+                key: PAYSTACK_PUBLIC_KEY,
+                email: email,
+                amount: 1000 * 100,
+                currency: 'NGN',
+                ref: 'PDF_' + Date.now() + '_' + Math.random().toString(36).substring(7),
+                metadata: {
+                    custom_fields: [
+                        {
+                            display_name: "Customer Name",
+                            variable_name: "customer_name",
+                            value: name
+                        }
+                    ]
+                },
+                callback: function(response) {
+                    handlePaymentSuccess(email, name, response);
+                },
+                onClose: function() {
+                    alert('Payment cancelled');
+                }
+            });
+            
+            handler.openIframe();
+        }
+
+        function handlePaymentSuccess(email, name, response) {
+            let user = users.find(u => u.email === email);
+            
+            if (!user) {
+                user = {
+                    id: 'user_' + Date.now(),
+                    name: name,
+                    email: email,
+                    hasAccess: true,
+                    accessExpiry: Date.now() + ACCESS_DURATION,
+                    purchaseDate: Date.now(),
+                    paymentRef: response.reference
+                };
+                users.push(user);
+            } else {
+                user.hasAccess = true;
+                user.accessExpiry = Date.now() + ACCESS_DURATION;
+                user.paymentRef = response.reference;
+            }
+            
+            saveUsers();
+            renderUsers();
+            
+            currentUser = user;
+            unlockPDF();
+            updateTimer(user.accessExpiry);
+            updateUserWatermark();
+            
+            payButton.disabled = true;
+            payButton.innerHTML = '<i class="fas fa-check"></i> Access Granted';
+            
+            showStatus(`Welcome ${name}! You have 3 hours access.`, 'granted');
+            showNotification('Payment successful! Access granted.', 'success');
+        }
+
+        // ========== SESSION RESTORATION ==========
+        function restoreUserSession() {
+            const validUser = users.find(u => u.hasAccess && u.accessExpiry > Date.now());
+            
+            if (validUser) {
+                currentUser = validUser;
+                unlockPDF();
+                updateTimer(validUser.accessExpiry);
+                updateUserWatermark();
+                payButton.disabled = true;
+                payButton.innerHTML = '<i class="fas fa-check"></i> Access Granted';
+                showStatus(`Welcome back ${validUser.name}!`, 'granted');
+            } else {
+                // Clean up expired users
+                const hasExpired = users.some(u => !u.hasAccess || u.accessExpiry < Date.now());
+                if (hasExpired) {
+                    users = users.map(u => {
+                        if (u.accessExpiry < Date.now()) {
+                            u.hasAccess = false;
+                        }
+                        return u;
+                    });
+                    saveUsers();
+                    renderUsers();
+                }
+                lockPDF();
+            }
+        }
+
+        // ========== INITIALIZATION ==========
+        payButton.onclick = initializePayment;
+        
+        loadUsers();
+        restoreUserSession();
+        updateUserWatermark();
+        setInterval(updateUserWatermark, 60000);
+
+        // Cleanup
+        window.addEventListener('beforeunload', () => {
+            if (accessTimer) clearInterval(accessTimer);
+        });
+
+        // Make functions global for buttons
+        window.nextPage = nextPage;
+        window.previousPage = previousPage;
+    </script>
+</body>
+</html>
