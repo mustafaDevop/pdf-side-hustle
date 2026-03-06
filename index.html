@@ -504,11 +504,11 @@
                     ₦1,000 <small>one-time</small>
                 </div>
                 <div class="duration">
-                    <i class="far fa-clock"></i> 3 hours access
+                    <i class="far fa-clock"></i> 30 minutes access
                 </div>
 
                 <ul class="feature-list">
-                    <li><i class="fas fa-check-circle"></i> Full PDF access for 3 hours</li>
+                    <li><i class="fas fa-check-circle"></i> Full PDF access for 30 minutes</li>
                     <li><i class="fas fa-check-circle"></i> Secure canvas rendering</li>
                     <li><i class="fas fa-check-circle"></i> No download/print options</li>
                     <li><i class="fas fa-check-circle"></i> Screenshot protection</li>
@@ -537,7 +537,7 @@
         // Configuration
         const PAYSTACK_PUBLIC_KEY = 'pk_test_5541021b5c191d8892c207ce33ebb05841b7110d';
         const PDF_FILE = 'CYBERSECURITY PRACTICAL LABORATORY REPORT.pdf';
-        const ACCESS_DURATION = 3 * 60 * 60 * 1000;
+        const ACCESS_DURATION = 30 * 60 * 1000;
 
         // State
         let currentUser = null;
@@ -945,7 +945,7 @@
             payButton.disabled = true;
             payButton.innerHTML = '<i class="fas fa-check"></i> Access Granted';
 
-            showStatus(`Welcome ${name}! You have 3 hours access.`, 'granted');
+            showStatus(`Welcome ${name}! You have 30 mintues access.`, 'granted');
             showNotification('Payment successful! Access granted.', 'success');
         }
 
